@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Spatial Intelligence — Reconstruction Probe</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2230; --line:#2a3242;
+    --txt:#e6edf3; --muted:#9aa7b8; --accent:#4f9dff; --accent2:#9d6bff;
+    --good:#3fb950; --bad:#f85149; --warn:#d29922;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{display:flex;gap:16px;padding:16px;align-items:flex-start;max-width:1320px;margin:0 auto}
+  .sidebar{width:312px;flex:0 0 312px;background:var(--panel);border:1px solid var(--line);
+    border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;max-height:calc(100vh - 32px);overflow:auto}
+  .stage{flex:1;min-width:0}
+  h1{font-size:18px;margin:0 0 2px}
+  .sub{font-size:12px;color:var(--muted);margin:0 0 4px;line-height:1.4}
+  .group{display:flex;flex-direction:column;gap:7px}
+  .group h2{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+    margin:6px 0 2px;border-bottom:1px solid var(--line);padding-bottom:5px}
+  label.row{display:flex;justify-content:space-between;align-items:center;font-size:13px;gap:8px}
+  select,input[type=number]{background:var(--panel2);color:var(--txt);border:1px solid var(--line);
+    border-radius:7px;padding:6px 8px;font-size:13px;min-width:128px}
+  input[type=number]{width:74px;min-width:0}
+  .seg{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{flex:1;background:transparent;border:0;color:var(--muted);padding:7px;font-size:13px;cursor:pointer}
+  .seg button.on{background:var(--accent);color:#fff}
+  .cons{display:flex;align-items:center;gap:8px;font-size:13px}
+  .cons input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent)}
+  .cons .v{margin-left:auto;display:flex;align-items:center;gap:6px;color:var(--muted)}
+  button.primary{background:var(--accent);color:#fff;border:0;border-radius:9px;padding:11px;
+    font-size:14px;font-weight:600;cursor:pointer}
+  button.primary:hover{filter:brightness(1.08)}
+  button.ghost{background:var(--panel2);color:var(--txt);border:1px solid var(--line);
+    border-radius:8px;padding:8px;font-size:12px;cursor:pointer}
+  button.ghost.on{border-color:var(--accent);color:var(--accent)}
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap}
+  .btnrow button{flex:1;min-width:92px}
+  .hud{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;min-width:86px}
+  .stat .k{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .stat .v{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums}
+  .stat.warn .v{color:var(--warn)} .stat.bad .v{color:var(--bad)} .stat.good .v{color:var(--good)}
+  .canvas-host{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  canvas{display:block;width:100%;height:auto;touch-action:none;cursor:grab}
+  canvas.drag{cursor:grabbing}
+  .overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    background:rgba(13,17,23,.82);backdrop-filter:blur(2px)}
+  .overlay.show{display:flex}
+  .rotbar{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:none;align-items:center;gap:12px;
+    background:rgba(22,27,34,0.93);border:1px solid var(--line);border-radius:30px;padding:7px 14px;backdrop-filter:blur(4px);
+    font-size:12px;color:var(--muted);z-index:5;user-select:none}
+  .rotbar.show{display:flex}
+  .rotbar button{width:42px;height:42px;border-radius:50%;border:1px solid var(--line);background:var(--panel2);
+    color:var(--txt);font-size:22px;line-height:1;cursor:pointer;touch-action:none}
+  .rotbar button:hover{border-color:var(--accent);color:var(--accent)}
+  .rotbar button:active{background:var(--accent);color:#fff}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:26px 30px;text-align:center;max-width:380px}
+  .card h3{margin:0 0 6px;font-size:24px}
+  .card.win h3{color:var(--good)} .card.lose h3{color:var(--bad)}
+  .card p{color:var(--muted);font-size:14px;margin:0 0 16px;line-height:1.5}
+  .hint{font-size:11px;color:var(--muted);line-height:1.5}
+  .api-note{font-size:11px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;padding:8px;line-height:1.5}
+  code{color:var(--accent);font-size:11px}
+  @media(max-width:900px){.wrap{flex-direction:column}.sidebar{width:100%;flex:none;max-height:none}}
+</style>
+</head>
+<body>
+<div id="consent" style="position:fixed;left:0;right:0;bottom:0;z-index:50;background:#161b22;border-top:1px solid #2a3242;color:#e6edf3;padding:12px 16px;display:flex;gap:12px;align-items:center;justify-content:center;font-size:13px;flex-wrap:wrap">
+  <span style="max-width:680px">This research game records <b>anonymous</b> gameplay (puzzle settings, timing, moves, accuracy) to study spatial reasoning. No personal data is collected. May we record your play?</span>
+  <button id="consentYes" style="background:#4f9dff;color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer">Accept</button>
+  <button id="consentNo" style="background:#1c2230;color:#e6edf3;border:1px solid #2a3242;border-radius:8px;padding:8px 14px;cursor:pointer">No thanks</button>
+</div>
+<div class="wrap">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar">
+    <div>
+      <h1>Spatial Intelligence</h1>
+      <p class="sub">Cut a piece from the picture, shatter it, then drag the fragments back into the hole. Built as a probe for VLA spatial reasoning.</p>
+    </div>
+
+    <div class="group">
+      <h2>Picture</h2>
+      <div class="seg" id="contentSeg">
+        <button data-content="geometric" class="on">Geometric</button>
+        <button data-content="image">Real image</button>
+      </div>
+      <input type="file" id="imgFile" accept="image/*" style="display:none" />
+      <button class="ghost" id="uploadBtn" style="display:none">Upload image…</button>
+      <label class="row">Texture
+        <select id="texture">
+          <option value="rich" selected>Rich</option>
+          <option value="medium">Medium</option>
+          <option value="flat">Flat (shape-only)</option>
+        </select>
+      </label>
+      <p class="hint">Flat texture removes the continuity shortcut, forcing shape reasoning. (Geometric mode.)</p>
+    </div>
+
+    <div class="group">
+      <h2>Cut-out region</h2>
+      <label class="row">Size
+        <select id="size">
+          <option value="small">Small</option><option value="medium" selected>Medium</option><option value="large">Large</option>
+        </select>
+      </label>
+      <label class="row">Irregularity
+        <select id="cutIrr">
+          <option value="regular">Regular</option><option value="medium" selected>Medium</option><option value="high">Highly irregular</option>
+        </select>
+      </label>
+      <label class="row">Symmetry
+        <select id="symmetry">
+          <option value="none" selected>None</option>
+          <option value="bilateral">Bilateral</option>
+          <option value="4fold">4-fold</option>
+          <option value="radial">Radial</option>
+        </select>
+      </label>
+      <p class="hint">More symmetry = the silhouette gives away less, so it's harder.</p>
+    </div>
+
+    <div class="group">
+      <h2>Fragments</h2>
+      <label class="row">Number
+        <select id="count">
+          <option value="few">Few (4)</option><option value="some" selected>Some (8)</option><option value="many">Many (15)</option>
+        </select>
+      </label>
+      <label class="row">Shape irregularity
+        <select id="pieceIrr">
+          <option value="regular">Regular</option><option value="medium" selected>Medium</option><option value="high">Highly irregular</option>
+        </select>
+      </label>
+      <label class="row">Min interior
+        <input type="number" id="minInterior" value="0" min="0" step="1">
+      </label>
+      <label class="row">Distractors
+        <select id="distract">
+          <option value="0" selected>0</option><option value="2">2</option><option value="4">4</option>
+        </select>
+      </label>
+      <p class="hint">Min interior forces at least N land-locked fragments (best-effort resampling; easier with large cut-out + many pieces). Distractors fit nowhere — leave them in the tray.</p>
+    </div>
+
+    <div class="group">
+      <h2>Budgets (logged, not enforced)</h2>
+      <div class="cons"><label style="flex:1">Time</label><span class="v"><input type="number" id="vTime" value="120" min="10" step="10">s</span></div>
+      <div class="cons"><label style="flex:1">Actions</label><span class="v"><input type="number" id="vAct" value="30" min="1" step="1">moves</span></div>
+      <div class="cons"><label style="flex:1">Compute</label><span class="v"><input type="number" id="vComp" value="1000" min="1" step="50">budget</span></div>
+      <div class="cons"><input type="checkbox" id="enforce"><label for="enforce">Enforce as hard limits</label></div>
+      <p class="hint">Default: all three are recorded per run for the trade-off curve. Tick to make them end the round.</p>
+    </div>
+
+    <div class="group">
+      <h2>Mode</h2>
+      <div class="btnrow">
+        <button class="ghost" id="guideBtn">Guides: off</button>
+        <button class="ghost" id="rotBtn">Rotation: off</button>
+        <button class="ghost on" id="snapBtn">Snap: on</button>
+        <button class="ghost" id="visionBtn">Vision API: off</button>
+      </div>
+      <p class="hint">Rotation on: click a piece to select it (white outline), then scroll the wheel or press Q / E to rotate — no need to keep holding. Snap off → pieces stay where dropped; placement scored by continuous error.</p>
+    </div>
+
+    <div class="btnrow">
+      <button class="primary" id="newGame" style="flex:2">New Game</button>
+      <button class="ghost" id="exportBtn">Export log</button>
+    </div>
+
+    <div class="api-note">
+      Agent seam: <code>window.SpatialGame</code> — <code>getState({vision})</code>, <code>getObservation()</code> (pixels, no coords), <code>applyAction()</code>, <code>setSettings()</code>, <code>newGame()</code>, <code>exportLog()</code>.
+    </div>
+  </aside>
+
+  <!-- ============ STAGE ============ -->
+  <section class="stage">
+    <div class="hud">
+      <div class="stat" id="sPlaced"><div class="k">Placed</div><div class="v">0/0</div></div>
+      <div class="stat" id="sInt"><div class="k">Interior</div><div class="v">0/0</div></div>
+      <div class="stat" id="sTime"><div class="k">Time</div><div class="v">0.0s</div></div>
+      <div class="stat" id="sAct"><div class="k">Moves</div><div class="v">0</div></div>
+      <div class="stat" id="sErr"><div class="k">Mean err</div><div class="v">—</div></div>
+    </div>
+    <div class="canvas-host">
+      <canvas id="cv" width="860" height="760"></canvas>
+      <div class="rotbar" id="rotbar">
+        <button id="rotL" title="Rotate left (Q)">⟲</button>
+        <span>Rotate&nbsp;· drag the blue handle, tap these, or Q / E</span>
+        <button id="rotR" title="Rotate right (E)">⟳</button>
+      </div>
+      <div class="overlay" id="ov">
+        <div class="card" id="ovCard">
+          <h3 id="ovTitle">Solved!</h3>
+          <p id="ovMsg"></p>
+          <button class="primary" id="ovBtn">Play again</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   SPATIAL INTELLIGENCE — reconstruction probe for VLAs
+   (1) geometry (2) generation (3) state (4) render
+   (5) interaction (6) UI/metrics (7) agent API
+   ============================================================ */
+
+/* ---------- (1) PURE GEOMETRY ---------- */
+const G = {
+  area(p){let a=0;for(let i=0,n=p.length;i<n;i++){const q=p[(i+1)%n];a+=p[i].x*q.y-q.x*p[i].y;}return a/2;},
+  centroid(p){let a=0,cx=0,cy=0;for(let i=0,n=p.length;i<n;i++){const q=p[(i+1)%n];
+    const cr=p[i].x*q.y-q.x*p[i].y;a+=cr;cx+=(p[i].x+q.x)*cr;cy+=(p[i].y+q.y)*cr;}
+    a*=0.5;if(Math.abs(a)<1e-9){let mx=0,my=0;for(const v of p){mx+=v.x;my+=v.y;}return{x:mx/p.length,y:my/p.length};}
+    return{x:cx/(6*a),y:cy/(6*a)};},
+  inside(pt,poly){let c=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const a=poly[i],b=poly[j];
+    if(((a.y>pt.y)!==(b.y>pt.y))&&(pt.x<(b.x-a.x)*(pt.y-a.y)/(b.y-a.y)+a.x))c=!c;}return c;},
+  clipHalf(poly,f){const out=[];const n=poly.length;if(!n)return out;
+    for(let i=0;i<n;i++){const cur=poly[i],prv=poly[(i+n-1)%n];const dc=f(cur),dp=f(prv);
+      if(dc<=0){ if(dp>0)out.push(G._isect(prv,cur,dp,dc)); out.push(cur);}
+      else if(dp<=0)out.push(G._isect(prv,cur,dp,dc));}
+    return out;},
+  _isect(a,b,da,db){const t=da/(da-db);return{x:a.x+t*(b.x-a.x),y:a.y+t*(b.y-a.y)};},
+  clipConvex(subject,clip){let out=subject;const n=clip.length;const ccw=G.area(clip)>0;
+    for(let i=0;i<n;i++){let a=clip[i],b=clip[(i+1)%n];if(!ccw){const t=a;a=b;b=t;}
+      const f=(p)=>-((b.x-a.x)*(p.y-a.y)-(b.y-a.y)*(p.x-a.x));
+      out=G.clipHalf(out,f);if(out.length===0)break;}
+    return out;},
+  voronoiCell(seeds,i,bbox){let cell=[{x:bbox.x0,y:bbox.y0},{x:bbox.x1,y:bbox.y0},{x:bbox.x1,y:bbox.y1},{x:bbox.x0,y:bbox.y1}];
+    const si=seeds[i];
+    for(let j=0;j<seeds.length;j++){if(j===i)continue;const sj=seeds[j];
+      const dx=sj.x-si.x,dy=sj.y-si.y;const rhs=(sj.x*sj.x+sj.y*sj.y-si.x*si.x-si.y*si.y)/2;
+      cell=G.clipHalf(cell,(p)=>dx*p.x+dy*p.y-rhs);if(cell.length===0)break;}
+    return cell;},
+  bbox(poly){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const p of poly){
+    if(p.x<x0)x0=p.x;if(p.y<y0)y0=p.y;if(p.x>x1)x1=p.x;if(p.y>y1)y1=p.y;}return{x0,y0,x1,y1};},
+  distToSeg(p,a,b){const dx=b.x-a.x,dy=b.y-a.y;const L=dx*dx+dy*dy;
+    let t=L?((p.x-a.x)*dx+(p.y-a.y)*dy)/L:0;t=Math.max(0,Math.min(1,t));
+    return Math.hypot(p.x-(a.x+t*dx),p.y-(a.y+t*dy));},
+  onBoundary(pt,poly,eps){for(let i=0;i<poly.length;i++){
+    if(G.distToSeg(pt,poly[i],poly[(i+1)%poly.length])<eps)return true;}return false;}
+};
+
+/* ---------- (2) GENERATION ---------- */
+let RNG=mulberry32(12345);
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);
+  t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const rnd=(a,b)=>a+(b-a)*RNG();
+
+// Fourier-radius cutout: symmetry chooses which harmonics + whether phases are free.
+function genCutout(cx,cy,baseR,irr,symmetry){
+  let amp,verts;
+  if(irr==="regular"){amp=0.05;verts=48;}
+  else if(irr==="medium"){amp=0.20;verts=40;}
+  else{amp=0.38;verts=36;}
+  let allowed;
+  if(symmetry==="none")allowed=[2,3,4,5,6,7];
+  else if(symmetry==="bilateral")allowed=[1,2,3,4,5];     // cos-only -> mirror about x-axis
+  else if(symmetry==="4fold")allowed=[4,8,12];
+  else allowed=[6,12,18];                                  // radial
+  const terms=allowed.map((m,k)=>({m,a:rnd(0.4,1)/(1+k*0.5),
+    ph:symmetry==="bilateral"?0:rnd(0,2*Math.PI)}));
+  const norm=terms.reduce((s,t)=>s+Math.abs(t.a),0)||1;
+  const pts=[];
+  for(let i=0;i<verts;i++){const th=i/verts*2*Math.PI;
+    let f=0;for(const t of terms)f+=t.a*Math.cos(t.m*th+t.ph);f/=norm;
+    const r=baseR*(1+amp*f);
+    pts.push({x:cx+Math.cos(th)*r,y:cy+Math.sin(th)*r});}
+  return pts;
+}
+
+function genSeeds(cutout,n,pieceIrr,targetInterior){
+  const bb=G.bbox(cutout);const cen=G.centroid(cutout);let seeds=[];
+  const span=Math.min(bb.x1-bb.x0,bb.y1-bb.y0);
+  const bias=targetInterior>0;
+  if(bias){ // tight central cluster -> these cells are surrounded -> land-locked
+    const cl=Math.min(targetInterior+1,Math.max(1,n-3));let g=0;
+    while(seeds.length<cl&&g++<3000){const t=Math.sqrt(RNG())*0.34,a=RNG()*2*Math.PI;
+      const p={x:cen.x+Math.cos(a)*t*span,y:cen.y+Math.sin(a)*t*span};
+      if(G.inside(p,cutout))seeds.push(p);}
+  }else if(pieceIrr==="regular"){
+    const cols=Math.ceil(Math.sqrt(n)),rows=Math.ceil(n/cols);
+    const w=(bb.x1-bb.x0)/cols,h=(bb.y1-bb.y0)/rows;
+    for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+      const p={x:bb.x0+(c+0.5)*w+rnd(-0.12,0.12)*w,y:bb.y0+(r+0.5)*h+rnd(-0.12,0.12)*h};
+      if(G.inside(p,cutout))seeds.push(p);}
+  }
+  let guard=0;const minD=span/(n*0.9);
+  while(seeds.length<n&&guard++<6000){
+    const p={x:rnd(bb.x0,bb.x1),y:rnd(bb.y0,bb.y1)};
+    if(G.inside(p,cutout)){let ok=true;
+      for(const s of seeds)if(Math.hypot(s.x-p.x,s.y-p.y)<minD){ok=false;break;}
+      if(ok)seeds.push(p);}
+  }
+  // relaxation regularises cells; skip when chasing interior so the cluster survives
+  const iters=bias?0:(pieceIrr==="regular"?3:pieceIrr==="medium"?1:0);
+  for(let it=0;it<iters;it++)seeds=relax(seeds,cutout);
+  return seeds.slice(0,n);
+}
+// Best-effort: resample seed layouts, keep the one with the most interior pieces.
+function buildLayout(cutout,n,pieceIrr,minInterior){
+  if(!(minInterior>0)){const pieces=genPieces(cutout,genSeeds(cutout,n,pieceIrr,0));
+    return {pieces,achieved:pieces.filter(p=>p.interior).length};}
+  let best=null,bestC=-1;
+  for(let t=0;t<90;t++){
+    const pieces=genPieces(cutout,genSeeds(cutout,n,pieceIrr,minInterior));
+    const ic=pieces.filter(p=>p.interior).length;
+    if(ic>bestC){bestC=ic;best=pieces;}
+    if(ic>=minInterior)return {pieces,achieved:ic};
+  }
+  return {pieces:best,achieved:bestC};
+}
+function relax(seeds,cutout){const bb=G.bbox(cutout);const out=[];
+  for(let i=0;i<seeds.length;i++){const cell=G.voronoiCell(seeds,i,bb);
+    const pc=G.clipConvex(cutout,cell);out.push(pc.length>=3?G.centroid(pc):seeds[i]);}
+  return out;}
+
+function genPieces(cutout,seeds){const bb=G.bbox(cutout);const out=[];
+  for(let i=0;i<seeds.length;i++){const cell=G.voronoiCell(seeds,i,bb);
+    const poly=G.clipConvex(cutout,cell);
+    if(poly.length<3||Math.abs(G.area(poly))<6)continue;
+    const eps=Math.max(2,Math.min(bb.x1-bb.x0,bb.y1-bb.y0)*0.012);
+    const interior=!poly.some(v=>G.onBoundary(v,cutout,eps));
+    out.push({poly,interior});}
+  return out;}
+
+/* ---------- (3) STATE ---------- */
+const cv=document.getElementById("cv"),ctx=cv.getContext("2d");
+const W=cv.width,H=cv.height;
+const BOARD={x:0,y:0,w:W,h:560}, TRAY={x:0,y:560,w:W,h:H-560};
+const palette=["#4f9dff","#9d6bff","#f778ba","#3fb950","#d29922","#ff7b72","#56d4dd","#a5d6ff","#ffa657","#7ee787","#d2a8ff","#79c0ff"];
+let base=document.createElement("canvas");base.width=W;base.height=H;
+let userImg=null;
+
+const S={
+  settings:{content:"geometric",texture:"rich",size:"medium",cutIrr:"medium",symmetry:"none",
+    count:"some",pieceIrr:"medium",minInterior:0,distract:0,
+    rotation:false,guides:false,snap:true,vision:false},
+  cutout:[],pieces:[],dragId:-1,selId:-1,rotating:false,dragOff:{x:0,y:0},
+  solved:false,failed:false,started:false,t0:0,endT:0,
+  budgets:{timeV:120,actV:30,compV:1000},enforce:false,
+  movesUsed:0,compUsed:0,timeLeft:120,geomSeed:0,seedUsed:0,forcedSeed:null,assignmentId:null,log:[],dirty:true
+};
+const COUNTS={few:4,some:8,many:15}, SIZES={small:0.30,medium:0.44,large:0.60};
+const realPieces=()=>S.pieces.filter(p=>!p.isDistractor);
+const byId=id=>S.pieces.find(p=>p.id===id);
+const angNorm=a=>{while(a>Math.PI)a-=2*Math.PI;while(a<-Math.PI)a+=2*Math.PI;return a;};
+
+/* ---------- base picture ---------- */
+function paintBase(){const g=base.getContext("2d");g.clearRect(0,0,W,H);
+  g.fillStyle="#11151c";g.fillRect(0,0,W,H);
+  if(S.settings.content==="image"&&userImg){
+    const ir=userImg.width/userImg.height,br=BOARD.w/BOARD.h;let dw,dh,dx,dy;
+    if(ir>br){dh=BOARD.h;dw=dh*ir;dx=BOARD.x-(dw-BOARD.w)/2;dy=BOARD.y;}
+    else{dw=BOARD.w;dh=dw/ir;dx=BOARD.x;dy=BOARD.y-(dh-BOARD.h)/2;}
+    g.save();g.beginPath();g.rect(BOARD.x,BOARD.y,BOARD.w,BOARD.h);g.clip();
+    g.drawImage(userImg,dx,dy,dw,dh);g.restore();
+  }else paintGeometric(g,S.settings.texture);
+}
+function paintGeometric(g,level){
+  const R2=mulberry32(((S.seedUsed>>>0)^0x85ebca6b)>>>0);const rr=(a,b)=>a+(b-a)*R2();
+  const grd=g.createLinearGradient(0,0,BOARD.w,BOARD.h);
+  grd.addColorStop(0,"#1b2a4a");grd.addColorStop(1,"#3a1b4a");
+  g.fillStyle=grd;g.fillRect(BOARD.x,BOARD.y,BOARD.w,BOARD.h);
+  if(level==="flat")return;                 // shape-only: no continuity cues
+  g.save();g.beginPath();g.rect(BOARD.x,BOARD.y,BOARD.w,BOARD.h);g.clip();
+  const cx=BOARD.x+BOARD.w/2,cy=BOARD.y+BOARD.h/2;
+  const ringA=level==="rich"?0.20:0.10, nShapes=level==="rich"?46:16;
+  for(let r=BOARD.w*0.55;r>10;r-=26){g.beginPath();g.arc(cx,cy,r,0,7);
+    g.strokeStyle=`hsla(${(r*1.4)%360},70%,60%,${ringA})`;g.lineWidth=10;g.stroke();}
+  for(let i=0;i<nShapes;i++){const x=rr(BOARD.x,BOARD.x+BOARD.w),y=rr(BOARD.y,BOARD.y+BOARD.h),s=rr(14,60);
+    g.fillStyle=`hsla(${rr(0,360)},75%,${rr(45,68)}%,0.55)`;g.beginPath();
+    if(R2()<0.5)g.arc(x,y,s/2,0,7);
+    else{const k=Math.floor(rr(3,6));for(let j=0;j<k;j++){const a=j/k*7,px=x+Math.cos(a)*s/2,py=y+Math.sin(a)*s/2;j?g.lineTo(px,py):g.moveTo(px,py);}g.closePath();}
+    g.fill();}
+  if(level==="rich"){g.strokeStyle="rgba(255,255,255,0.06)";g.lineWidth=1;
+    for(let x=BOARD.x;x<=BOARD.x+BOARD.w;x+=40){g.beginPath();g.moveTo(x,BOARD.y);g.lineTo(x,BOARD.y+BOARD.h);g.stroke();}
+    for(let y=BOARD.y;y<=BOARD.y+BOARD.h;y+=40){g.beginPath();g.moveTo(BOARD.x,y);g.lineTo(BOARD.x+BOARD.w,y);g.stroke();}}
+  g.restore();
+}
+
+/* ---------- new game ---------- */
+function newGame(){
+  if(S.forcedSeed!=null){S.seedUsed=S.forcedSeed>>>0;}
+  else{S.geomSeed++;S.seedUsed=(Date.now()^(S.geomSeed*2654435761))>>>0;}
+  RNG=mulberry32(S.seedUsed);
+  paintBase();
+  const cx=BOARD.x+BOARD.w/2,cy=BOARD.y+BOARD.h/2;
+  const baseR=Math.min(BOARD.w,BOARD.h)/2*SIZES[S.settings.size];
+  S.cutout=genCutout(cx,cy,baseR,S.settings.cutIrr,S.settings.symmetry);
+  const n=COUNTS[S.settings.count];
+  const layout=buildLayout(S.cutout,n,S.settings.pieceIrr,+S.settings.minInterior||0);
+  S.interiorAchieved=layout.achieved;
+  let id=0;
+  S.pieces=layout.pieces.map(p=>{const home=G.centroid(p.poly);
+    const radius=Math.max(...p.poly.map(v=>Math.hypot(v.x-home.x,v.y-home.y)));
+    return {id:id++,poly:p.poly,interior:p.interior,home,radius,cur:{x:home.x,y:home.y},rot:0,placed:false,isDistractor:false,color:palette[id%palette.length]};});
+  // distractors: fragments of a decoy cutout elsewhere; they fit nowhere
+  const dN=+S.settings.distract;
+  if(dN>0){
+    const dcx=BOARD.x+rnd(0.3,0.7)*BOARD.w,dcy=BOARD.y+rnd(0.3,0.7)*BOARD.h;
+    const dr=Math.min(BOARD.w,BOARD.h)/2*0.30;
+    const dCut=genCutout(dcx,dcy,dr,"medium","none");
+    const dSeeds=genSeeds(dCut,dN+2,"medium",false);
+    genPieces(dCut,dSeeds).slice(0,dN).forEach(p=>{const home=G.centroid(p.poly);
+      const radius=Math.max(...p.poly.map(v=>Math.hypot(v.x-home.x,v.y-home.y)));
+      S.pieces.push({id:id++,poly:p.poly,interior:false,home,radius,cur:{x:home.x,y:home.y},rot:0,placed:false,isDistractor:true,color:palette[id%palette.length]});});
+  }
+  scatter();
+  S.solved=S.failed=S.started=false;S.movesUsed=0;S.compUsed=0;S.trace=[];
+  S.timeLeft=S.budgets.timeV;S.dragId=-1;S.selId=-1;
+  hideOverlay();markDirty();updateHUD();
+}
+function scatter(){const m=S.pieces.length;
+  const cols=Math.max(1,Math.round(Math.sqrt(m*TRAY.w/TRAY.h)));const rows=Math.ceil(m/cols);
+  const cw=TRAY.w/cols,ch=TRAY.h/rows;
+  // shuffle so distractors aren't grouped
+  const order=S.pieces.map((_,i)=>i);for(let i=order.length-1;i>0;i--){const j=Math.floor(RNG()*(i+1));[order[i],order[j]]=[order[j],order[i]];}
+  order.forEach((pi,k)=>{const pc=S.pieces[pi];const c=k%cols,r=Math.floor(k/cols);
+    pc.cur={x:TRAY.x+(c+0.5)*cw+rnd(-cw*0.16,cw*0.16),y:TRAY.y+(r+0.5)*ch+rnd(-ch*0.16,ch*0.16)};
+    pc.rot=S.settings.rotation?rnd(-Math.PI,Math.PI):0;pc.placed=false;});
+}
+
+/* ---------- placement / scoring ---------- */
+function tryPlace(pc){
+  if(pc.isDistractor)return false;
+  const d=Math.hypot(pc.cur.x-pc.home.x,pc.cur.y-pc.home.y);
+  const rotOk=!S.settings.rotation||Math.abs(angNorm(pc.rot))<0.18;
+  if(d<22&&rotOk){pc.placed=true;if(S.settings.snap){pc.cur={x:pc.home.x,y:pc.home.y};pc.rot=0;}return true;}
+  pc.placed=false;return false;
+}
+function metrics(){const real=realPieces();let pos=0,ang=0,placed=0,iP=0,iT=0;
+  real.forEach(p=>{pos+=Math.hypot(p.cur.x-p.home.x,p.cur.y-p.home.y);ang+=Math.abs(angNorm(p.rot));
+    if(p.placed)placed++;if(p.interior){iT++;if(p.placed)iP++;}});
+  const k=real.length||1;
+  return {n:real.length,placed,meanPosErr:pos/k,meanAngErr:ang/k,interiorPlaced:iP,interiorTotal:iT,
+    distractorsMisplaced:S.pieces.filter(p=>p.isDistractor&&G.inside(p.cur,S.cutout)).length};}
+function allPlaced(){const r=realPieces();return r.length&&r.every(p=>p.placed);}
+function checkSolved(){if(allPlaced()){S.solved=true;endGame(true);}}
+
+/* ---------- (4) RENDER ---------- */
+function piecePath(g,pc){g.beginPath();pc.poly.forEach((v,i)=>i?g.lineTo(v.x,v.y):g.moveTo(v.x,v.y));g.closePath();}
+function withTransform(g,pc,fn){g.save();g.translate(pc.cur.x,pc.cur.y);g.rotate(pc.rot);g.translate(-pc.home.x,-pc.home.y);fn();g.restore();}
+function drawPiece(g,pc,opts={}){withTransform(g,pc,()=>{
+  g.save();piecePath(g,pc);g.clip();g.drawImage(base,0,0);g.restore();
+  piecePath(g,pc);g.lineWidth=opts.active?3:1.6;g.strokeStyle=opts.active?"#fff":"rgba(0,0,0,0.55)";g.stroke();
+  g.lineWidth=1;g.strokeStyle=pc.color;g.globalAlpha=.9;g.stroke();g.globalAlpha=1;});}
+function render(){
+  ctx.clearRect(0,0,W,H);
+  ctx.drawImage(base,0,0);
+  ctx.save();ctx.beginPath();S.cutout.forEach((v,i)=>i?ctx.lineTo(v.x,v.y):ctx.moveTo(v.x,v.y));ctx.closePath();
+  ctx.fillStyle="rgba(5,8,12,0.86)";ctx.fill();
+  ctx.lineWidth=2.5;ctx.strokeStyle="rgba(255,255,255,0.5)";ctx.stroke();ctx.restore();
+  if(S.settings.guides){ctx.save();ctx.setLineDash([4,4]);ctx.lineWidth=1;ctx.strokeStyle="rgba(255,255,255,0.28)";
+    realPieces().forEach(pc=>{if(!pc.placed){piecePath(ctx,pc);ctx.stroke();}});ctx.setLineDash([]);ctx.restore();}
+  ctx.strokeStyle="rgba(255,255,255,0.08)";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,TRAY.y);ctx.lineTo(W,TRAY.y);ctx.stroke();
+  ctx.fillStyle="rgba(255,255,255,0.30)";ctx.font="11px sans-serif";
+  ctx.fillText("FRAGMENT TRAY — drag pieces up into the hole",12,TRAY.y+18);
+  S.pieces.forEach(pc=>{if(pc.placed)drawPiece(ctx,pc);});
+  S.pieces.forEach(pc=>{if(!pc.placed&&pc.id!==S.dragId&&pc.id!==S.selId)drawPiece(ctx,pc);});
+  if(S.selId>=0&&S.selId!==S.dragId){const pc=byId(S.selId);if(pc&&!pc.placed)drawPiece(ctx,pc,{active:true});}
+  if(S.dragId>=0){const pc=byId(S.dragId);if(pc){ctx.save();ctx.shadowColor="rgba(0,0,0,0.6)";ctx.shadowBlur=16;ctx.shadowOffsetY=6;drawPiece(ctx,pc,{active:true});ctx.restore();}}
+  // rotation handle on the selected piece (trackpad: drag this knob around the piece)
+  if(S.settings.rotation&&S.selId>=0){const pc=byId(S.selId);if(pc&&!pc.placed){const h=handlePos(pc);
+    ctx.save();ctx.strokeStyle="rgba(255,255,255,0.85)";ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(pc.cur.x,pc.cur.y);ctx.lineTo(h.x,h.y);ctx.stroke();
+    ctx.fillStyle=S.rotating?"#9d6bff":"#4f9dff";ctx.beginPath();ctx.arc(h.x,h.y,10,0,7);ctx.fill();
+    ctx.lineWidth=2;ctx.strokeStyle="#fff";ctx.stroke();ctx.restore();}}
+}
+function handlePos(pc){const R=(pc.radius||30)+28;return {x:pc.cur.x+Math.cos(pc.rot-Math.PI/2)*R,y:pc.cur.y+Math.sin(pc.rot-Math.PI/2)*R};}
+function onHandle(pc,pt){const h=handlePos(pc);return Math.hypot(pt.x-h.x,pt.y-h.y)<18;}
+function updateRotUI(){let on=false;if(S.settings.rotation&&S.selId>=0){const pc=byId(S.selId);on=!!(pc&&!pc.placed);}
+  const rb=document.getElementById("rotbar");if(rb)rb.classList.toggle("show",on);}
+function markDirty(){S.dirty=true;updateRotUI();}
+function loop(){if(S.dirty){render();S.dirty=false;}requestAnimationFrame(loop);}
+requestAnimationFrame(loop);
+
+/* ---------- (5) INTERACTION ---------- */
+function toCanvas(e){const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*(W/r.width),y:(e.clientY-r.top)*(H/r.height)};}
+function localHit(pc,pt){const dx=pt.x-pc.cur.x,dy=pt.y-pc.cur.y;const c=Math.cos(-pc.rot),s=Math.sin(-pc.rot);
+  return G.inside({x:dx*c-dy*s+pc.home.x,y:dx*s+dy*c+pc.home.y},pc.poly);}
+function pickPiece(pt){for(let i=S.pieces.length-1;i>=0;i--){const pc=S.pieces[i];if(pc.placed)continue;if(localHit(pc,pt))return pc;}return null;}
+cv.addEventListener("pointerdown",e=>{if(S.solved||S.failed)return;const pt=toCanvas(e);
+  // grab the rotation handle of the selected piece first
+  if(S.settings.rotation&&S.selId>=0){const sp=byId(S.selId);if(sp&&!sp.placed&&onHandle(sp,pt)){
+    S.rotating=true;cv.setPointerCapture(e.pointerId);if(!S.started){S.started=true;S.t0=performance.now();}markDirty();return;}}
+  const pc=pickPiece(pt);
+  if(!pc){S.selId=-1;markDirty();return;}                  // click empty space => deselect
+  S.pieces.splice(S.pieces.indexOf(pc),1);S.pieces.push(pc);
+  S.selId=pc.id;S.dragId=pc.id;S.dragOff={x:pt.x-pc.cur.x,y:pt.y-pc.cur.y};
+  cv.classList.add("drag");cv.setPointerCapture(e.pointerId);
+  if(!S.started){S.started=true;S.t0=performance.now();}markDirty();});
+cv.addEventListener("pointermove",e=>{const pt=toCanvas(e);
+  if(S.rotating){const pc=byId(S.selId);if(pc){pc.rot=Math.atan2(pt.y-pc.cur.y,pt.x-pc.cur.x)+Math.PI/2;markDirty();}return;}
+  if(S.dragId<0)return;const pc=byId(S.dragId);if(!pc)return;
+  pc.cur={x:pt.x-S.dragOff.x,y:pt.y-S.dragOff.y};markDirty();});
+cv.addEventListener("pointerup",e=>{
+  if(S.rotating){S.rotating=false;const pc=byId(S.selId);
+    if(pc){S.movesUsed++;const snapped=tryPlace(pc);pushTrace("rotate",pc,snapped);  // a rotate gesture counts as one action
+      if(snapped){S.selId=-1;checkSolved();}enforceMoveLimit();}
+    markDirty();updateHUD();return;}
+  if(S.dragId<0)return;const pc=byId(S.dragId);if(!pc){S.dragId=-1;return;}
+  cv.classList.remove("drag");S.movesUsed++;const placed=tryPlace(pc);pushTrace("drop",pc,placed);S.dragId=-1;
+  S.selId=placed?-1:pc.id;                                 // keep selected so it can be rotated; locked pieces deselect
+  markDirty();updateHUD();
+  if(placed)checkSolved();
+  enforceMoveLimit();});
+// Out-of-moves check shared by drops and rotations (parity with VLA applyAction).
+function enforceMoveLimit(){if(!S.solved&&S.enforce&&S.budgets.actV&&S.movesUsed>=S.budgets.actV&&!allPlaced())endGame(false,"Out of moves");}
+// rotate the active piece (the one held, else the one selected) — no need to keep holding
+function rotateActive(d){if(!S.settings.rotation)return;const id=S.dragId>=0?S.dragId:S.selId;if(id<0)return;
+  const pc=byId(id);if(!pc||pc.placed)return;pc.rot+=d;
+  // Count each rotation step (Q/E press or wheel notch) as one action, and trace
+  // it, so human and VLA move/budget accounting match (the VLA's applyAction
+  // counts every rotate). Without this, human rotations were free and untraced.
+  S.movesUsed++;let snapped=false;
+  if(S.dragId<0&&tryPlace(pc)){snapped=true;S.selId=-1;checkSolved();}   // rotating into correct angle can snap it home
+  pushTrace("rotate",pc,snapped);enforceMoveLimit();markDirty();updateHUD();}
+cv.addEventListener("wheel",e=>{if(!S.settings.rotation)return;const id=S.dragId>=0?S.dragId:S.selId;if(id<0)return;
+  e.preventDefault();rotateActive((e.deltaY>0?1:-1)*0.09);},{passive:false});
+window.addEventListener("keydown",e=>{if(!S.settings.rotation)return;
+  if(e.key==="q"||e.key==="Q")rotateActive(-0.09);else if(e.key==="e"||e.key==="E")rotateActive(0.09);});
+// on-screen rotate buttons: tap = one step, press-and-hold = spin
+function holdRepeat(btn,dir){let iv=null;
+  const stop=()=>{if(iv){clearInterval(iv);iv=null;}};
+  btn.addEventListener("pointerdown",ev=>{ev.preventDefault();rotateActive(dir);stop();iv=setInterval(()=>rotateActive(dir),80);
+    if(btn.setPointerCapture&&ev.pointerId!=null)btn.setPointerCapture(ev.pointerId);});
+  btn.addEventListener("pointerup",stop);btn.addEventListener("pointerleave",stop);btn.addEventListener("pointercancel",stop);}
+holdRepeat(document.getElementById("rotL"),-0.09);holdRepeat(document.getElementById("rotR"),0.09);
+
+/* ---------- (6) UI + METRICS ---------- */
+const $=id=>document.getElementById(id);
+function bindSel(id,key,num){$(id).addEventListener("change",e=>{S.settings[key]=num?+e.target.value:e.target.value;});}
+["size","cutIrr","symmetry","count","pieceIrr","texture"].forEach(k=>bindSel(k,k));
+bindSel("distract","distract",true);
+bindSel("minInterior","minInterior",true);
+
+// Push S.settings back onto the sidebar controls. Used after the agent API or a
+// server assignment changes settings, so toggle buttons never desync from state
+// (previously a server assignment set rotation=false but left the button "on").
+function syncToggle(id,key,label){const el=$(id);if(!el)return;
+  el.textContent=label+": "+(S.settings[key]?"on":"off");el.classList.toggle("on",!!S.settings[key]);}
+function syncControlsFromSettings(){
+  ["size","cutIrr","symmetry","count","pieceIrr","texture"].forEach(k=>{if($(k)&&S.settings[k]!=null)$(k).value=S.settings[k];});
+  if($("distract"))$("distract").value=S.settings.distract;
+  if($("minInterior"))$("minInterior").value=S.settings.minInterior;
+  syncToggle("rotBtn","rotation","Rotation");syncToggle("snapBtn","snap","Snap");
+  syncToggle("guideBtn","guides","Guides");syncToggle("visionBtn","vision","Vision API");
+  document.querySelectorAll("#contentSeg button").forEach(x=>x.classList.toggle("on",x.dataset.content===S.settings.content));
+  if($("uploadBtn"))$("uploadBtn").style.display=S.settings.content==="image"?"block":"none";}
+
+document.querySelectorAll("#contentSeg button").forEach(b=>b.addEventListener("click",()=>{
+  document.querySelectorAll("#contentSeg button").forEach(x=>x.classList.remove("on"));b.classList.add("on");
+  S.settings.content=b.dataset.content;$("uploadBtn").style.display=S.settings.content==="image"?"block":"none";}));
+$("uploadBtn").addEventListener("click",()=>$("imgFile").click());
+$("imgFile").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;const img=new Image();img.onload=()=>{userImg=img;newGame();};img.src=URL.createObjectURL(f);});
+
+function toggleBtn(id,key,label){$(id).addEventListener("click",()=>{S.settings[key]=!S.settings[key];
+  $(id).textContent=label+": "+(S.settings[key]?"on":"off");$(id).classList.toggle("on",S.settings[key]);markDirty();});}
+toggleBtn("guideBtn","guides","Guides");
+$("rotBtn").addEventListener("click",()=>{S.settings.rotation=!S.settings.rotation;$("rotBtn").textContent="Rotation: "+(S.settings.rotation?"on":"off");$("rotBtn").classList.toggle("on",S.settings.rotation);markDirty();});
+$("snapBtn").addEventListener("click",()=>{S.settings.snap=!S.settings.snap;$("snapBtn").textContent="Snap: "+(S.settings.snap?"on":"off");$("snapBtn").classList.toggle("on",S.settings.snap);});
+$("visionBtn").addEventListener("click",()=>{S.settings.vision=!S.settings.vision;$("visionBtn").textContent="Vision API: "+(S.settings.vision?"on":"off");$("visionBtn").classList.toggle("on",S.settings.vision);});
+
+$("vTime").addEventListener("change",e=>{S.budgets.timeV=+e.target.value;S.timeLeft=+e.target.value;updateHUD();});
+$("vAct").addEventListener("change",e=>{S.budgets.actV=+e.target.value;updateHUD();});
+$("vComp").addEventListener("change",e=>{S.budgets.compV=+e.target.value;updateHUD();});
+$("enforce").addEventListener("change",e=>{S.enforce=e.target.checked;});
+$("newGame").addEventListener("click",()=>{if(EXP.mode)nextPuzzle();else newGame();});
+$("ovBtn").addEventListener("click",()=>{if(EXP.mode)nextPuzzle();else newGame();});
+$("exportBtn").addEventListener("click",()=>window.SpatialGame.exportLog());
+
+function updateHUD(){const M=metrics();
+  $("sPlaced").querySelector(".v").textContent=`${M.placed}/${M.n}`;
+  $("sInt").querySelector(".v").textContent=`${M.interiorPlaced}/${M.interiorTotal}`;
+  $("sInt").classList.toggle("warn",(+S.settings.minInterior||0)>M.interiorTotal);
+  const elapsed=S.started?((S.endT||performance.now())-S.t0)/1000:0;
+  const st=$("sTime"),sa=$("sAct"),se=$("sErr");st.className=sa.className=se.className="stat";
+  if(S.enforce){const t=Math.max(0,S.timeLeft);st.querySelector(".v").textContent=t.toFixed(0)+"s";if(t<=10)st.classList.add("bad");else if(t<=30)st.classList.add("warn");}
+  else st.querySelector(".v").textContent=elapsed.toFixed(1)+"s";
+  if(S.enforce&&S.budgets.actV){const left=S.budgets.actV-S.movesUsed;sa.querySelector(".v").textContent=`${S.movesUsed}/${S.budgets.actV}`;if(left<=3)sa.classList.add("bad");else if(left<=8)sa.classList.add("warn");}
+  else sa.querySelector(".v").textContent=String(S.movesUsed);
+  se.querySelector(".v").textContent=Math.round(M.meanPosErr)+"px";
+}
+setInterval(()=>{if(!S.started||S.solved||S.failed)return;
+  S.timeLeft=S.budgets.timeV-(performance.now()-S.t0)/1000;
+  if(S.enforce&&S.timeLeft<=0&&!allPlaced())endGame(false,"Time's up");updateHUD();},200);
+
+function recordRun(win,why){const M=metrics();const dur=((S.endT||performance.now())-S.t0)/1000;
+  const rec={ts:new Date().toISOString(),solved:win,reason:why||(win?"solved":""),
+    settings:{...S.settings},budgets:{...S.budgets},enforce:S.enforce,seed:S.seedUsed,
+    timeSec:+dur.toFixed(2),moves:S.movesUsed,compute:S.compUsed,
+    pieces:M.n,placed:M.placed,interiorPlaced:M.interiorPlaced,interiorTotal:M.interiorTotal,
+    minInteriorReq:+S.settings.minInterior||0,interiorAchieved:S.interiorAchieved,
+    meanPosErr:+M.meanPosErr.toFixed(2),meanAngErr:+M.meanAngErr.toFixed(3),
+    distractors:+S.settings.distract,distractorsMisplaced:M.distractorsMisplaced};
+  S.log.push(rec);sendTelemetry(rec);return rec;}
+function endGame(win,why){if(S.solved&&!win)return;S.solved=win;S.failed=!win;S.endT=performance.now();
+  const M=metrics();recordRun(win,why);
+  const card=$("ovCard"),t=$("ovTitle"),m=$("ovMsg");card.className="card "+(win?"win":"lose");
+  const dur=((S.endT-S.t0)/1000).toFixed(1);
+  if(win)t.textContent="Solved!",m.textContent=`${M.n} fragments in ${dur}s, ${S.movesUsed} moves. Interior ${M.interiorPlaced}/${M.interiorTotal}. Mean residual ${Math.round(M.meanPosErr)}px.`;
+  else t.textContent="Round over",m.textContent=`${why}. ${M.placed}/${M.n} placed (interior ${M.interiorPlaced}/${M.interiorTotal}). Mean err ${Math.round(M.meanPosErr)}px.`;
+  $("ov").classList.add("show");updateHUD();}
+function hideOverlay(){$("ov").classList.remove("show");S.endT=0;}
+
+/* ---------- (7) AGENT API ---------- */
+window.SpatialGame={
+  // Full symbolic state. vision=true (or Vision-API mode) strips coordinates/vertices/cutout
+  // so the agent must reason from pixels, not from the answer key.
+  getState(opts){const vision=(opts&&opts.vision)||S.settings.vision;
+    const cons={time:{limit:S.budgets.timeV,left:Math.max(0,S.timeLeft),enforced:S.enforce},
+      actions:{limit:S.budgets.actV,used:S.movesUsed,enforced:S.enforce},
+      compute:{budget:S.budgets.compV,used:S.compUsed,enforced:S.enforce}};
+    if(vision){return {mode:"vision",canvas:{w:W,h:H,board:BOARD,tray:TRAY},constraints:cons,
+      pieces:S.pieces.filter(p=>!p.placed||true).map(p=>({id:p.id,placed:p.placed,
+        current:{x:+p.cur.x.toFixed(1),y:+p.cur.y.toFixed(1)},rot:+p.rot.toFixed(3)})),
+      solved:S.solved,failed:S.failed,placedCount:metrics().placed};}
+    return {mode:"oracle",canvas:{w:W,h:H,board:BOARD,tray:TRAY},settings:{...S.settings},constraints:cons,
+      cutout:S.cutout.map(p=>({x:+p.x.toFixed(2),y:+p.y.toFixed(2)})),
+      pieces:S.pieces.map(p=>({id:p.id,placed:p.placed,isDistractor:p.isDistractor,interior:p.interior,
+        home:{x:+p.home.x.toFixed(2),y:+p.home.y.toFixed(2)},current:{x:+p.cur.x.toFixed(2),y:+p.cur.y.toFixed(2)},
+        rot:+p.rot.toFixed(3),vertices:p.poly.map(v=>({x:+v.x.toFixed(2),y:+v.y.toFixed(2)}))})),
+      solved:S.solved,failed:S.failed,metrics:metrics()};},
+  // Vision observation: rendered pixels + minimal addressable handles (no targets/vertices).
+  getObservation(){return {image:cv.toDataURL("image/png"),canvas:{w:W,h:H,board:BOARD,tray:TRAY},
+    pieces:S.pieces.map(p=>({id:p.id,placed:p.placed,current:{x:+p.cur.x.toFixed(1),y:+p.cur.y.toFixed(1)},rot:+p.rot.toFixed(3)})),
+    constraints:{time:Math.max(0,S.timeLeft),moves:S.movesUsed,compute:S.compUsed},
+    solved:S.solved,failed:S.failed};},
+  // action: {type:'move'|'rotate'|'place', id, x?, y?, rot?, cost?}
+  applyAction(a){const view=()=>this.getState(a&&a.viewOracle?{vision:false}:undefined);
+    if(S.solved||S.failed)return {ok:false,reason:"round_over",state:view()};
+    const pc=byId(a.id);if(!pc)return {ok:false,reason:"bad_id",state:view()};
+    if(!S.started){S.started=true;S.t0=performance.now();}
+    if(typeof a.cost==="number")S.compUsed+=a.cost;
+    if(typeof a.rot==="number")pc.rot=a.rot;
+    if(a.type==="move"||a.type==="place"){if(typeof a.x==="number")pc.cur.x=a.x;if(typeof a.y==="number")pc.cur.y=a.y;}
+    S.movesUsed++;let snapped=false;
+    if(a.type==="place"||a.type==="move")snapped=tryPlace(pc);
+    pushTrace(a.type,pc,snapped);markDirty();updateHUD();
+    if(S.enforce){
+      if(S.budgets.actV&&S.movesUsed>=S.budgets.actV&&!allPlaced())endGame(false,"Out of moves");
+      if(S.budgets.compV&&S.compUsed>=S.budgets.compV&&!allPlaced())endGame(false,"Out of compute");
+      if(S.budgets.timeV&&(S.budgets.timeV-(performance.now()-S.t0)/1000)<=0&&!allPlaced())endGame(false,"Time's up");}
+    if(!S.failed)checkSolved();
+    return {ok:true,snapped,state:view()};},
+  setSettings(o){Object.assign(S.settings,o||{});syncControlsFromSettings();return this.getState();},
+  setBudgets(o){Object.assign(S.budgets,o||{});if(o&&o.enforce!=null)S.enforce=!!o.enforce;
+    if($("vTime"))$("vTime").value=S.budgets.timeV;if($("vAct"))$("vAct").value=S.budgets.actV;
+    if($("vComp"))$("vComp").value=S.budgets.compV;if($("enforce"))$("enforce").checked=S.enforce;
+    updateHUD();return this.getState();},
+  setSeed(seed){S.forcedSeed=(seed==null?null:(seed>>>0));return this.getState();},
+  applyAssignment(a){if(a){if(a.settings)this.setSettings(a.settings);if(a.budgets)this.setBudgets(a.budgets);
+    S.forcedSeed=(a.seed==null?null:(a.seed>>>0));S.assignmentId=a.assignmentId||null;}newGame();return this.getState();},
+  newGame(){newGame();return this.getState();},
+  reset(){newGame();return this.getState();},
+  getLog(){return S.log.slice();},
+  exportLog(){const blob=new Blob([JSON.stringify(S.log,null,2)],{type:"application/json"});
+    const url=URL.createObjectURL(blob);const a=document.createElement("a");
+    a.href=url;a.download="spatial_runs_"+Date.now()+".json";a.click();URL.revokeObjectURL(url);return S.log.length;}
+};
+
+/* ---------- TELEMETRY (data collection) ---------- */
+const TELE={endpoint:(window.TELEMETRY_ENDPOINT||"/api/runs"),
+  eventsEndpoint:(window.TELEMETRY_EVENTS||"/api/events"),
+  consent:false,pid:"p_anon",sid:Math.random().toString(36).slice(2)+Date.now().toString(36),schemaVersion:1};
+function teleInit(){
+  try{TELE.pid=localStorage.getItem("si_pid");
+    if(!TELE.pid){TELE.pid="p_"+Math.random().toString(36).slice(2,12);localStorage.setItem("si_pid",TELE.pid);}
+    TELE.consent=localStorage.getItem("si_consent")==="1";}catch(e){}
+  const banner=document.getElementById("consent");if(!banner)return;
+  if(TELE.consent)banner.style.display="none";
+  const yes=document.getElementById("consentYes"),no=document.getElementById("consentNo");
+  if(yes)yes.onclick=()=>{TELE.consent=true;try{localStorage.setItem("si_consent","1");}catch(e){}banner.style.display="none";
+    if(EXP.pending){EXP.pending=false;beginExperiment();}};
+  if(no)no.onclick=()=>{TELE.consent=false;EXP.pending=false;banner.style.display="none";};
+}
+function pushTrace(type,pc,placed){if(!S.trace)S.trace=[];
+  S.trace.push({seq:S.trace.length,tMs:Math.round(performance.now()-(S.t0||performance.now())),type,
+    pieceId:pc?pc.id:null,x:pc?+pc.cur.x.toFixed(1):null,y:pc?+pc.cur.y.toFixed(1):null,
+    rot:pc?+pc.rot.toFixed(3):null,placed:!!placed});}
+function sendTelemetry(rec){if(!TELE.consent)return;
+  const body={schemaVersion:TELE.schemaVersion,participantId:TELE.pid,sessionId:TELE.sid,
+    actor:S.agentActor||"human",clientTs:rec.ts,seed:rec.seed,solved:rec.solved,reason:rec.reason,
+    settings:rec.settings,budgets:rec.budgets,enforce:rec.enforce,timeSec:rec.timeSec,moves:rec.moves,
+    compute:rec.compute,pieces:rec.pieces,placed:rec.placed,interiorTotal:rec.interiorTotal,
+    interiorPlaced:rec.interiorPlaced,minInteriorReq:rec.minInteriorReq,interiorAchieved:rec.interiorAchieved,
+    meanPosErr:rec.meanPosErr,meanAngErr:rec.meanAngErr,distractors:rec.distractors,
+    distractorsMisplaced:rec.distractorsMisplaced,assignmentId:S.assignmentId||null,userAgent:navigator.userAgent};
+  const trace=(S.trace||[]).slice();
+  fetch(TELE.endpoint,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(body),keepalive:true}).then(r=>r.json()).then(j=>{
+      if(j&&j.runId&&trace.length){const evs=trace.map(t=>({...t,schemaVersion:TELE.schemaVersion,
+        participantId:TELE.pid,sessionId:TELE.sid,runId:j.runId}));
+        fetch(TELE.eventsEndpoint,{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({events:evs}),keepalive:true}).catch(()=>{});}}).catch(()=>{});
+}
+teleInit();
+
+/* ---------- EXPERIMENT MODE (server-assigned seeds) ---------- */
+/* When a backend plan is available, every player (and the VLA) is served the
+   SAME puzzles (settings + fixed seed) so human and model results are
+   directly comparable. Falls back to free random play if no backend. */
+const EXP={mode:false,pending:false,base:(window.API_BASE||"")};
+async function fetchNext(){
+  if(!TELE.consent)return null;                 // never hit the server before consent
+  try{
+    const r=await fetch(EXP.base+"/api/next?participantId="+encodeURIComponent(TELE.pid));
+    if(!r.ok)return null;const a=await r.json();return (a&&a.assignmentId)?a:null;
+  }catch(e){return null;}}
+async function nextPuzzle(){const a=await fetchNext();
+  if(a){EXP.mode=true;window.SpatialGame.applyAssignment(a);setControlsLocked(true);return true;}return false;}
+// Opt-in entry point. Requires consent first; if not yet given, defer until the
+// player accepts (wired in teleInit). Falls back to free play if no backend plan.
+function requestExperiment(){
+  if(TELE.consent){beginExperiment();}
+  else{EXP.pending=true;const b=document.getElementById("consent");if(b)b.style.display="flex";}}
+async function beginExperiment(){const ok=await nextPuzzle();EXP.mode=ok;
+  if(!ok)setControlsLocked(false);}             // backend unavailable -> stay in free play
+// Lock the settings controls while server-assigned puzzles are in play, so it is
+// visually clear the puzzle parameters come from the server, not the sidebar.
+function setControlsLocked(on){
+  ["size","cutIrr","symmetry","count","pieceIrr","texture","distract","minInterior",
+   "vTime","vAct","vComp","enforce","rotBtn","snapBtn","guideBtn","visionBtn","uploadBtn"]
+    .forEach(id=>{const el=$(id);if(el)el.disabled=on;});
+  document.querySelectorAll("#contentSeg button").forEach(b=>b.disabled=on);
+  const ng=$("newGame");if(ng)ng.textContent=on?"Next puzzle":"New Game";
+  let note=$("expNote");
+  if(on&&!note){note=document.createElement("div");note.id="expNote";note.className="api-note";
+    note.style.borderColor="var(--accent2)";
+    note.textContent="Experiment mode: puzzles are server-assigned so human and model results are comparable. Settings are locked.";
+    const sb=document.querySelector(".sidebar");if(sb)sb.insertBefore(note,sb.children[1]);}
+  else if(!on&&note){note.remove();}}
+
+/* ---------- BOOT ---------- */
+// Free play by default: build a local puzzle from the sidebar settings and make
+// NO network call. Experiment mode (server-assigned puzzles) is opt-in via
+// ?exp=1 and only runs after the player consents, so nothing is fetched or
+// logged before opt-in (see docs/architecture.md, docs/data-schema.md).
+newGame();
+if(new URLSearchParams(location.search).get("exp")==="1")requestExperiment();
+</script>
+</body>
+</html>

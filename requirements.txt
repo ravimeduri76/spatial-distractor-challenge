@@ -1,0 +1,12 @@
+# Core harness. The mock bridge + tests need only pytest.
+pytest>=8.0
+
+# Real-browser harness (run `playwright install chromium` once after installing):
+playwright==1.44.0
+Pillow>=10.0
+
+# Bring your own agent framework — pick ONE (not installed here):
+#   google-adk          # Google Agent Development Kit
+#   langgraph           # LangGraph
+#   deepagents          # Deep Agents
+# ...plus whatever model SDK you use (e.g. anthropic, openai, google-generativeai).
