@@ -126,7 +126,16 @@ that file as-is. Reference baselines: `random` ≈ 5% (floor), `probe` = 100% bu
 
 ## Submitting
 
-Ship via **GitHub** (public repo or invite us) **or Google Drive** (zipped). Include:
+Use the submission channel we assign. Preferred paths are a private GitHub
+Classroom/private repo or a private fork/repo link; a zip/Drive upload is fine if
+we ask for it. **Do not open a public PR to this repo unless we explicitly ask
+you to** — public PRs expose your code, prompts, notes, and traces to other
+candidates.
+
+Your local `results/*.json` and trace are useful evidence, but they are not the
+official score. We re-run your agent against our private held-out seeds.
+
+Include:
 
 1. **Your agent code** + how to run it (one command).
 2. **Your prompts and agent/system instructions** — the actual text you send the
