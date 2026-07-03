@@ -12,6 +12,7 @@ addressable piece handles (id + current position), but not ``isDistractor``,
 from __future__ import annotations
 
 import io
+import random
 import time
 from typing import Any, Dict, List, Optional
 
@@ -43,6 +44,38 @@ class PuzzleSession:
         bridge.set_settings({**spec.settings, "vision": vision})
         bridge.set_seed(seed)
         bridge.new_game()
+
+        # Per-seed id relabelling. The engine always assigns real fragments ids
+        # 0..k-1 and appends distractors after them, so raw engine ids leak the
+        # answer (distractors are always the highest ids). We hand the agent a
+        # deterministic per-seed permutation of those ids instead, and translate
+        # every id at the tool boundary. Legitimate agents are unaffected (they
+        # use whatever ids ``list_pieces`` returns); a hard-coded id guess cannot
+        # survive the shuffle. The map is derived only from the seed, so grading
+        # stays reproducible; the agent never sees the seed or the permutation.
+        self._build_id_map()
+
+    def _build_id_map(self) -> None:
+        obs = self.bridge.get_observation()
+        engine_ids = sorted(int(p["id"]) for p in obs["pieces"])
+        rng = random.Random(2654435761 * (int(self.seed) & 0xFFFFFFFF) + 0x5EED)
+        shuffled = list(engine_ids)
+        while len(shuffled) > 1:
+            rng.shuffle(shuffled)
+            if shuffled != engine_ids:      # never hand back the identity map
+                break
+        # agent id k  <->  engine id shuffled[k]
+        self._agent_to_engine: Dict[int, int] = dict(enumerate(shuffled))
+        self._engine_to_agent: Dict[int, int] = {e: a for a, e in self._agent_to_engine.items()}
+
+    def _to_engine(self, agent_id: int) -> int:
+        try:
+            return self._agent_to_engine[int(agent_id)]
+        except KeyError:
+            raise ValueError(f"no piece {agent_id}")
+
+    def _to_agent(self, engine_id: int) -> int:
+        return self._engine_to_agent[int(engine_id)]
 
     # ---- session-history trace ----
     def _emit(self, tool: str, args: Dict[str, Any], result: Dict[str, Any],
@@ -86,8 +119,10 @@ class PuzzleSession:
         """Addressable handles for every tray piece: id, current x/y, placed."""
         self._charge(1)
         obs = self.bridge.get_observation()
-        pieces = [{"id": p["id"], "x": p["current"]["x"], "y": p["current"]["y"],
-                   "placed": p["placed"]} for p in obs["pieces"]]
+        pieces = [{"id": self._to_agent(p["id"]), "x": p["current"]["x"],
+                   "y": p["current"]["y"], "placed": p["placed"]}
+                  for p in obs["pieces"]]
+        pieces.sort(key=lambda p: p["id"])
         self._emit("list_pieces", {}, {"ids": [p["id"] for p in pieces]}, 1)
         return pieces
 
@@ -102,9 +137,10 @@ class PuzzleSession:
     def piece_image_png(self, piece_id: int, window: int = 130) -> bytes:
         """A square crop of the board centred on one piece (a 'zoom' tool)."""
         self._charge(1)
+        engine_id = self._to_engine(piece_id)
         obs = self.bridge.get_observation()
         png = self.bridge.b64_to_bytes(self.bridge.dataurl_to_b64(obs["image"]))
-        pc = next((p for p in obs["pieces"] if p["id"] == piece_id), None)
+        pc = next((p for p in obs["pieces"] if p["id"] == engine_id), None)
         if pc is None:
             raise ValueError(f"no piece {piece_id}")
         out = png
@@ -132,7 +168,8 @@ class PuzzleSession:
         Real fragments snap when positioned correctly; distractors never snap.
         """
         self._charge(cost)
-        res = self.bridge.apply_action({"type": "move", "id": piece_id,
+        engine_id = self._to_engine(piece_id)
+        res = self.bridge.apply_action({"type": "move", "id": engine_id,
                                         "x": x, "y": y, "cost": cost})
         out = {"piece_id": piece_id, "snapped": bool(res.get("snapped")),
                "placed_count": res.get("state", {}).get("placedCount")}
@@ -170,8 +207,18 @@ class PuzzleSession:
 
     # ---- grading hook (NOT a tool — used by the evaluator only) ----
     def _ground_truth_distractors(self) -> List[int]:
-        state = self.bridge.get_state(vision=False)
-        return sorted(p["id"] for p in state["pieces"] if p.get("isDistractor"))
+        # The engine ORs the requested mode with the live ``vision`` setting, so
+        # in a vision session ``get_state(vision=False)`` still returns the vision
+        # view (no answer key). Toggle the setting off to read the oracle state,
+        # then restore it. ``set_settings`` does not rebuild the puzzle, so the
+        # piece layout and ids are unchanged.
+        self.bridge.set_settings({"vision": False})
+        try:
+            state = self.bridge.get_state(vision=False)
+        finally:
+            self.bridge.set_settings({"vision": self.vision})
+        return sorted(self._to_agent(p["id"])
+                      for p in state["pieces"] if p.get("isDistractor"))
 
 
 class ToolsProxy:

@@ -55,11 +55,12 @@ def test_answer_key_hidden_in_vision():
 
 def test_try_fit_discriminates():
     sess, bridge, _ = _session()
-    truth = set(sess._ground_truth_distractors())
-    oracle = {p["id"]: p for p in bridge.get_state(vision=False)["pieces"]}
-    for pid, p in oracle.items():
-        res = sess.try_fit(pid, p["home"]["x"], p["home"]["y"])
-        if pid in truth:
+    # Engine state (raw ids + homes); the session hands agents a permuted id
+    # space, so translate each engine id to its agent id before probing.
+    for p in bridge.get_state(vision=False)["pieces"]:
+        agent_id = sess._to_agent(p["id"])
+        res = sess.try_fit(agent_id, p["home"]["x"], p["home"]["y"])
+        if p.get("isDistractor"):
             assert res["snapped"] is False     # distractors never snap
         else:
             assert res["snapped"] is True      # real piece snaps at its home
