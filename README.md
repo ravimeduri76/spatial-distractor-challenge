@@ -11,7 +11,8 @@ not your stamina. A clean, well-reasoned partial solution beats a sprawling one.
 ## The puzzle
 
 A picture has a shape cut out of it — the hole's silhouette is visible on the
-board. The cut-out was shattered into **4 fragments**, which sit scattered in the
+board. The hole is opaque: you see its outline and the picture around it, not
+what was inside it. The cut-out was shattered into **4 fragments**, which sit scattered in the
 tray below. Mixed in with them are **2 distractor fragments** that were cut from a
 *different* decoy shape and **fit nowhere** in the hole.
 
